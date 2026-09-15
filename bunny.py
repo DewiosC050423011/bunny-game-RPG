@@ -13,6 +13,7 @@ from vpython import (
     ring,
     sphere,
     vector,
+    winput,
 )
 
 # ---------------------------------------------------------
@@ -25,30 +26,43 @@ scene = canvas(
     background=vector(0.08, 0.12, 0.2),
 )
 
+# Prompt Nama Karakter
+player_name = "Dewi"
+
+game_state = "START"  # "START", "TUTORIAL_MENU", "PLAYING", "PAUSED", "GAMEOVER"
 level = 1
 score = 0
 target_carrots = 3
+is_tutorial = False
 
+# UI LEVEL (Pojok Kiri Dalam Arena)
 ui_level = label(
-    pos=vector(-5, 5.5, 0),
+    pos=vector(-7.5, 4.5, -6),
     text=f"LEVEL: {level}",
     height=20,
     color=color.yellow,
     box=False,
 )
+
+# UI SCORE (Pojok Kanan Dalam Arena)
 ui_score = label(
-    pos=vector(0, 5.5, 0),
+    pos=vector(7.5, 4.5, -6),
     text=f"🥕 Wortel: {score}/{target_carrots}",
     height=20,
     color=vector(1, 0.8, 0.2),
     box=False,
 )
-ui_info = label(
-    pos=vector(0, -5.5, 0),
-    text="[Panah]: Jalan | [Spasi]: Lompat | [F/J]: Tebasan Energi!",
-    height=16,
-    color=color.white,
-    box=False,
+
+# Text Banner Tengah
+banner_ui = label(
+    pos=vector(0, 2, 0),
+    text=(
+        "🐰 GAME KELINCI 3D RPG 🐰\n\nTekan [ENTER] untuk Input Nama & Mulai"
+    ),
+    height=26,
+    color=color.cyan,
+    box=True,
+    border=6,
 )
 
 # 2. ARENA BERMAIN
@@ -80,7 +94,7 @@ for px in [-7.5, 7.5]:
     make_tree(pz, px)
 
 # ---------------------------------------------------------
-# 3. KELINCI (HERO) & EFFECT SERANGAN
+# 3. KELINCI (HERO), NAMA, & EFEEKS
 # ---------------------------------------------------------
 player_max_hp = 100
 player_hp = 100
@@ -106,7 +120,15 @@ ear_r = cylinder(
 rabbit = compound([body, head, eye_l, eye_r, nose, ear_l, ear_r])
 rabbit.pos = vector(0, 0.5, 0)
 
-# Efek visual tebasan pedang/energi
+# Label Nama Karakter di Atas Kelinci
+name_label = label(
+    pos=rabbit.pos + vector(0, 3.2, 0),
+    text=f"👑 {player_name}",
+    height=16,
+    color=color.cyan,
+    box=False,
+)
+
 slash_effect = ring(
     pos=vector(0, 0.8, 0),
     axis=vector(0, 1, 0),
@@ -116,7 +138,6 @@ slash_effect = ring(
 )
 slash_effect.visible = False
 
-# Bar Darah Player (Hijau)
 player_hp_bg = box(
     pos=vector(0, 2.8, 0), size=vector(1.6, 0.15, 0.1), color=color.gray(0.3)
 )
@@ -130,58 +151,118 @@ def update_player_hp():
   player_hp_bar.size.x = 1.6 * ratio
   player_hp_bar.pos = rabbit.pos + vector(-0.8 * (1 - ratio), 2.3, 0)
   player_hp_bg.pos = rabbit.pos + vector(0, 2.3, 0)
+  name_label.pos = rabbit.pos + vector(0, 2.9, 0)
 
 
 # ---------------------------------------------------------
-# 4. MUSUH & HEALTH BAR
+# 4. SISTEM MULTIPLE ENEMIES & BOSS
 # ---------------------------------------------------------
-enemy_max_hp = 50
-enemy_hp = 50
-enemy_speed = 0.05
-enemy_alive = True
+enemies = []
 dark_gray_color = vector(0.3, 0.3, 0.3)
 
-e_body = sphere(pos=vector(0, 0.7, 0), radius=0.7, color=dark_gray_color)
-e_head = sphere(pos=vector(0, 1.3, 0.4), radius=0.45, color=dark_gray_color)
-e_eye1 = sphere(pos=vector(-0.15, 1.45, 0.75), radius=0.07, color=color.red)
-e_eye2 = sphere(pos=vector(0.15, 1.45, 0.75), radius=0.07, color=color.red)
-e_horn1 = cone(
-    pos=vector(-0.2, 1.6, 0.3),
-    axis=vector(-0.1, 0.5, 0),
-    radius=0.08,
-    color=color.black,
-)
-e_horn2 = cone(
-    pos=vector(0.2, 1.6, 0.3),
-    axis=vector(0.1, 0.5, 0),
-    radius=0.08,
-    color=color.black,
-)
 
-enemy = compound([e_body, e_head, e_eye1, e_eye2, e_horn1, e_horn2])
-enemy.pos = vector(4, 0.5, 4)
+class Enemy:
 
-enemy_hp_bg = box(
-    pos=vector(0, 2.5, 0), size=vector(1.4, 0.15, 0.1), color=color.gray(0.3)
-)
-enemy_hp_bar = box(
-    pos=vector(0, 2.5, 0), size=vector(1.4, 0.16, 0.12), color=color.red
-)
+  def __init__(self, is_boss=False):
+    self.is_boss = is_boss
+    self.max_hp = 200 if is_boss else 50 + (level * 10)
+    self.hp = self.max_hp
+    self.speed = 0.035 if is_boss else 0.045 + (level * 0.005)
+
+    scale = 1.8 if is_boss else 1.0
+    body_color = vector(0.7, 0.1, 0.1) if is_boss else dark_gray_color
+
+    eb = sphere(pos=vector(0, 0.7 * scale, 0), radius=0.7 * scale, color=body_color)
+    eh = sphere(
+        pos=vector(0, 1.3 * scale, 0.4 * scale),
+        radius=0.45 * scale,
+        color=body_color,
+    )
+    ee1 = sphere(
+        pos=vector(-0.15 * scale, 1.45 * scale, 0.75 * scale),
+        radius=0.08 * scale,
+        color=color.yellow if is_boss else color.red,
+    )
+    ee2 = sphere(
+        pos=vector(0.15 * scale, 1.45 * scale, 0.75 * scale),
+        radius=0.08 * scale,
+        color=color.yellow if is_boss else color.red,
+    )
+    eh1 = cone(
+        pos=vector(-0.2 * scale, 1.6 * scale, 0.3 * scale),
+        axis=vector(-0.1, 0.5 * scale, 0),
+        radius=0.08 * scale,
+        color=color.black,
+    )
+    eh2 = cone(
+        pos=vector(0.2 * scale, 1.6 * scale, 0.3 * scale),
+        axis=vector(0.1, 0.5 * scale, 0),
+        radius=0.08 * scale,
+        color=color.black,
+    )
+
+    self.obj = compound([eb, eh, ee1, ee2, eh1, eh2])
+    self.obj.pos = vector(
+        random.choice([-6, 6]), 0.5 * scale, random.choice([-6, 6])
+    )
+
+    # Efek Serangan Musuh (Aura Merah)
+    self.attack_ring = ring(
+        pos=self.obj.pos,
+        axis=vector(0, 1, 0),
+        radius=1.2 * scale,
+        thickness=0.08,
+        color=color.red,
+    )
+    self.attack_ring.visible = False
+
+    self.hp_bg = box(
+        pos=vector(0, 2.5 * scale, 0),
+        size=vector(1.4 * scale, 0.15, 0.1),
+        color=color.gray(0.3),
+    )
+    self.hp_bar = box(
+        pos=vector(0, 2.5 * scale, 0),
+        size=vector(1.4 * scale, 0.16, 0.12),
+        color=color.red,
+    )
+    self.alive = True
+
+  def update_hp(self):
+    if not self.alive:
+      self.hp_bar.visible = False
+      self.hp_bg.visible = False
+      self.attack_ring.visible = False
+      return
+    ratio = max(0, self.hp / self.max_hp)
+    scale = 1.8 if self.is_boss else 1.0
+    self.hp_bar.size.x = 1.4 * scale * ratio
+    self.hp_bar.pos = self.obj.pos + vector(
+        -0.7 * scale * (1 - ratio), 2.1 * scale, 0
+    )
+    self.hp_bg.pos = self.obj.pos + vector(0, 2.1 * scale, 0)
 
 
-def update_enemy_hp():
-  if not enemy_alive:
-    enemy_hp_bar.visible = False
-    enemy_hp_bg.visible = False
-    return
-  ratio = max(0, enemy_hp / enemy_max_hp)
-  enemy_hp_bar.size.x = 1.4 * ratio
-  enemy_hp_bar.pos = enemy.pos + vector(-0.7 * (1 - ratio), 2.1, 0)
-  enemy_hp_bg.pos = enemy.pos + vector(0, 2.1, 0)
+def spawn_enemies():
+  global enemies
+  for e in enemies:
+    e.alive = False
+    e.update_hp()
+    e.obj.visible = False
+  enemies.clear()
+
+  if is_tutorial:
+    enemies.append(Enemy(is_boss=False))
+  elif level % 3 == 0:  # BOSS LEVEL setiap 3 level!
+    enemies.append(Enemy(is_boss=True))
+  else:
+    count = min(4, level)  # Jumlah musuh nambah tiap level
+    for _ in range(count):
+      enemies.append(Enemy(is_boss=False))
 
 
 # ---------------------------------------------------------
-# 5. OBJECT WORTEL
+# 5. SISTEM WORTEL & RESET
 # ---------------------------------------------------------
 def spawn_carrot():
   cb = cone(
@@ -200,6 +281,29 @@ def spawn_carrot():
 
 carrot = spawn_carrot()
 
+
+def reset_level():
+  global player_hp, score, carrot
+  player_hp = player_max_hp
+  rabbit.pos = vector(0, 0.5, 0)
+  score = 0
+  ui_level.text = f"LEVEL: {'TUTORIAL' if is_tutorial else level}"
+  ui_score.text = f"🥕 Wortel: {score}/{target_carrots}"
+  update_player_hp()
+  spawn_enemies()
+  if carrot:
+    carrot.visible = False
+  carrot = spawn_carrot()
+
+
+def reset_full_game():
+  global level, target_carrots, is_tutorial
+  is_tutorial = False
+  level = 1
+  target_carrots = 3
+  reset_level()
+
+
 eating_anim = False
 anim_timer = 0
 anim_carrot = None
@@ -212,21 +316,74 @@ is_attacking = False
 attack_timer = 0
 t = 0
 current_angle = 0
+pause_debounce = False
 
 # ---------------------------------------------------------
 # 6. LOOP UTAMA GAME
 # ---------------------------------------------------------
 while True:
   rate(60)
-  t += 0.15
   k = keysdown()
 
-  if player_hp <= 0:
-    ui_info.text = "💀 GAME OVER! Kelinci kamu kalah... Jalankan ulang script!"
-    ui_info.color = color.red
-    break
+  if game_state == "START":
+    if "\n" in k or "enter" in k:
+      game_state = "TUTORIAL_MENU"
+      banner_ui.text = (
+          "📚 PILIH MODE 📚\n\nTekan [T] : Main Level Tutorial\nTekan [S] :"
+          " Skip / Langsung Level 1"
+      )
+    continue
 
-  # A. KONTROL PLAYER
+  elif game_state == "TUTORIAL_MENU":
+    if "t" in k:
+      is_tutorial = True
+      target_carrots = 1
+      reset_level()
+      game_state = "PLAYING"
+      banner_ui.visible = False
+    elif "s" in k:
+      reset_full_game()
+      game_state = "PLAYING"
+      banner_ui.visible = False
+    continue
+
+  elif game_state == "PAUSED":
+    if "p" in k and not pause_debounce:
+      pause_debounce = True
+      game_state = "PLAYING"
+      banner_ui.visible = False
+    elif "p" not in k:
+      pause_debounce = False
+    continue
+
+  elif game_state == "GAMEOVER":
+    if "r" in k:
+      reset_level()
+      game_state = "PLAYING"
+      banner_ui.visible = False
+    elif "\n" in k or "enter" in k:
+      reset_full_game()
+      game_state = "PLAYING"
+      banner_ui.visible = False
+    continue
+
+  # -----------------------------------------------------
+  # STATE: PLAYING
+  # -----------------------------------------------------
+  if "p" in k and not pause_debounce:
+    pause_debounce = True
+    game_state = "PAUSED"
+    banner_ui.text = "⏸ GAME PAUSED\nTekan [P] untuk Lanjut"
+    banner_ui.visible = True
+    continue
+  elif "p" not in k:
+    pause_debounce = False
+
+  t += 0.15
+  if "r" in k:
+    reset_level()
+
+  # A. MOVEMENT & ATTACK PLAYER
   move_x, move_z = 0, 0
   if "up" in k:
     move_z -= speed
@@ -241,7 +398,6 @@ while True:
     velocity_y = 0.35
     is_jumping = True
 
-  # TOMBOL SERANG (F atau J)
   if ("f" in k or "j" in k) and not is_attacking:
     is_attacking = True
     attack_timer = 12
@@ -260,30 +416,29 @@ while True:
         math.sin(current_angle), 0, math.cos(current_angle)
     ) * 1.6
 
-  # ANIMASI SERANGAN TEBASAN ENERGI
+  # PLAYER ATTACK LOGIC
   if is_attacking:
     rabbit.rotate(angle=0.4, axis=vector(0, 1, 0))
-    # Tampilkan Efek Tebasan Melingkar
     slash_effect.visible = True
     slash_effect.pos = rabbit.pos + vector(0, 0.3, 0)
-    slash_effect.radius = 1.2 + (12 - attack_timer) * 0.08  # Melebar keluar
-
+    slash_effect.radius = 1.2 + (12 - attack_timer) * 0.08
     attack_timer -= 1
 
-    # Cek Hitbox Serangan ke Musuh
-    if enemy_alive and (rabbit.pos - enemy.pos).mag < 2.0:
-      enemy_hp -= 3.0
-      update_enemy_hp()
-      enemy.pos += (enemy.pos - rabbit.pos).norm() * 0.25  # Terlempar mundur
-      if enemy_hp <= 0:
-        enemy_alive = False
-        enemy.visible = False
+    for e in enemies:
+      if e.alive and (rabbit.pos - e.obj.pos).mag < (2.2 if e.is_boss else 1.8):
+        e.hp -= 4.0
+        e.update_hp()
+        e.obj.pos += (e.obj.pos - rabbit.pos).norm() * 0.2
+        if e.hp <= 0:
+          e.alive = False
+          e.obj.visible = False
+          e.update_hp()
 
     if attack_timer <= 0:
       is_attacking = False
       slash_effect.visible = False
 
-  # Gravitasi & Lompat
+  # GRAVITASI
   rabbit.pos.y += velocity_y
   velocity_y += gravity
   if rabbit.pos.y <= 0.5:
@@ -293,20 +448,35 @@ while True:
 
   update_player_hp()
 
-  # B. AI MUSUH
-  if enemy_alive:
-    dir_to_player = (rabbit.pos - enemy.pos).norm()
-    enemy.pos += dir_to_player * enemy_speed
-    enemy.pos.y = 0.5
-    enemy.axis = dir_to_player * 1.4
+  if player_hp <= 0:
+    game_state = "GAMEOVER"
+    banner_ui.text = (
+        "💀 GAME OVER!\nTekan [R] Restart Level\nTekan [ENTER] New Game"
+    )
+    banner_ui.visible = True
+    continue
 
-    update_enemy_hp()
+  # B. AI ENEMIES & ANIMASI SERANGAN MUSUH
+  all_enemies_dead = True
+  for e in enemies:
+    if e.alive:
+      all_enemies_dead = False
+      dir_to_player = (rabbit.pos - e.obj.pos).norm()
+      e.obj.pos += dir_to_player * e.speed
+      e.obj.axis = dir_to_player * (2.2 if e.is_boss else 1.4)
+      e.update_hp()
 
-    if (rabbit.pos - enemy.pos).mag < 1.1:
-      player_hp -= 0.7
-      update_player_hp()
+      dist = (rabbit.pos - e.obj.pos).mag
+      # Animasi Serangan Musuh (Aura Merah Menyala)
+      if dist < 1.6:
+        e.attack_ring.visible = True
+        e.attack_ring.pos = e.obj.pos
+        player_hp -= 1.2 if e.is_boss else 0.6
+        update_player_hp()
+      else:
+        e.attack_ring.visible = False
 
-  # C. SISTEM WORTEL, HEAL, & LEVEL UP
+  # C. WORTEL & NAIK LEVEL
   if carrot:
     carrot.pos.y = 0.4 + math.sin(t) * 0.1
     carrot.rotate(angle=0.04, axis=vector(0, 1, 0))
@@ -314,9 +484,7 @@ while True:
     if (rabbit.pos - carrot.pos).mag < 1.1 and not eating_anim:
       score += 1
       ui_score.text = f"🥕 Wortel: {score}/{target_carrots}"
-
-      # FITUR 1: DARAH NAİK PAS MAKAN WORTEL (+20 HP)
-      player_hp = min(player_max_hp, player_hp + 20)
+      player_hp = min(player_max_hp, player_hp + 25)
       update_player_hp()
 
       anim_carrot = carrot
@@ -335,29 +503,15 @@ while True:
       eating_anim = False
       anim_carrot = None
 
-      # Naik Level jika target wortel tercapai & musuh mati
-      if score >= target_carrots and not enemy_alive:
-        level += 1
-        score = 0
-        target_carrots += 2
+      if score >= target_carrots and all_enemies_dead:
+        if is_tutorial:
+          is_tutorial = False
+          level = 1
+          target_carrots = 3
+        else:
+          level += 1
+          target_carrots += 2
 
-        # FITUR 2: DARAH FULL AGAIN PAS NAIK LEVEL!
-        player_hp = player_max_hp
-        update_player_hp()
-
-        enemy_max_hp += 35
-        enemy_hp = enemy_max_hp
-        enemy_speed += 0.02
-
-        ui_level.text = f"LEVEL: {level}"
-        ui_score.text = f"🥕 Wortel: {score}/{target_carrots}"
-        ui_info.text = (
-            f"🎉 NAIK LEVEL {level}! Darah kamu kembali FULL! Musuh makin kuat!"
-        )
-
-        enemy_alive = True
-        enemy.visible = True
-        enemy.pos = vector(random.choice([-5, 5]), 0.5, random.choice([-5, 5]))
-        carrot = spawn_carrot()
+        reset_level()
       else:
         carrot = spawn_carrot()
